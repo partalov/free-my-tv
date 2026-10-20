@@ -46,6 +46,10 @@ var Prefs = (function () {
     language: function () { return pick('language', CONFIG.language || 'auto'); },
     temperature: function () { return pick('temperature', CONFIG.temperature || 'auto'); },
     theme: function () { return pick('theme', 'auto'); },
+    /** What the Live TV button opens: 'live' (the antenna) or an input's key ('hdmi2'). */
+    liveTv: function () { return pick('liveTv', 'live'); },
+    /** 'photo' (the first pick's, blurred) or 'aurora'. */
+    background: function () { return pick('background', 'photo'); },
     weather: function () { return pick('weather', true); },
     quotes: function () { return pick('quotes', CONFIG.showCrypto !== false); },
     coin: function (i) { var c = pick('coins', null); return c ? c[i] !== false : true; },
@@ -233,10 +237,11 @@ var Data = (function () {
   }
 
   var cache = stored('recs') || {};
+  var top10 = cache.top10 || {movie: [], tv: []};
   var picks = cache.picks || [], listAt = cache.listAt || 0, period = cache.period, listLang = cache.lang || '', stamp = cache.stamp || '';
   var fetchingRecs = false, failedAt = 0, recsError = '';
 
-  function saveRecs() { store('recs', {picks: picks, listAt: listAt, period: period, lang: listLang, stamp: stamp}); }
+  function saveRecs() { store('recs', {picks: picks, top10: top10, listAt: listAt, period: period, lang: listLang, stamp: stamp}); }
 
   function hourPeriod(d) {
     var h = d.getHours();
@@ -255,8 +260,9 @@ var Data = (function () {
     return (cut > 0 ? t.slice(0, cut) : t).replace(/^\s+|\s+$/g, '');
   }
 
-  /** This hour's 3 picks: movies ("movie"), shows ("tv") or both (null). */
-  function now(kind) {
+  /** This hour's picks (3, or max): movies ("movie"), shows ("tv") or both (null). */
+  function now(kind, max) {
+    max = max || 3;
     var list = [];
     if (!KEY) return list;
     for (var i = 0; i < picks.length; i++) {
@@ -265,7 +271,7 @@ var Data = (function () {
     }
     if (!list.length) return list;
     var hour = Math.floor(Date.now() / 3600000), out = [], seen = {};
-    for (var j = 0; j < list.length && out.length < 3; j++) {
+    for (var j = 0; j < list.length && out.length < max; j++) {
       var q = list[(hour * 3 + j) % list.length], f = franchise(q.title);
       if (!seen[f]) { seen[f] = true; out.push(q); }
     }
@@ -326,6 +332,11 @@ var Data = (function () {
         var s = service(flat[i].provider_name);
         if (s && appFor(s[1])) { p.app = s[1]; p.service = s[4]; }
       }
+      // Where it's on for the Top 10, on the TV's apps or not: a streaming service, else rent or buy, else cinemas.
+      if (p.service) p.where = p.service;
+      else if (flat && flat.length) { var any = service(flat[0].provider_name); p.where = any ? any[4] : flat[0].provider_name; }
+      else if (here && (here.rent || here.buy)) p.where = tr('Alugar ou comprar', 'Rent or buy', 'Alquilar o comprar');
+      else p.where = p.kind === 'movie' ? tr('Nos cinemas', 'In cinemas', 'En cines') : tr('Sem streaming aqui', 'Not streaming here', 'Sin streaming aquí');
       if (p.service && p.app) parts.push(p.service);
       p.meta = parts.join(' · ');
       p.detailed = true;
@@ -335,7 +346,8 @@ var Data = (function () {
 
   function addPick(list, o, kind) {
     if (!o.backdrop_path) return;
-    list.push({id: o.id, kind: kind, title: kind === 'movie' ? o.title : o.name, backdrop: o.backdrop_path, meta: '', app: null, detailed: false});
+    list.push({id: o.id, kind: kind, title: kind === 'movie' ? o.title : o.name, backdrop: o.backdrop_path, poster: o.poster_path || '',
+      meta: '', app: null, detailed: false});
   }
 
   function keyOf(p) { return p.kind + ':' + p.id; }
@@ -367,14 +379,18 @@ var Data = (function () {
       if (!ids.length) { done(new Error("none of the TV's streaming apps are on TMDB")); return; }
       var common = '&language=' + lang() + '&watch_region=' + REGION + '&with_watch_monetization_types=flatrate&include_adult=false'
           + '&sort_by=popularity.desc&with_watch_providers=' + encodeURIComponent(ids.join('|'));
-      var hot = {movie: [], tv: []}, fresh = {movie: [], tv: []};
+      var hot = {movie: [], tv: []}, fresh = {movie: [], tv: []}, top = {movie: [], tv: []};
       each(['movie', 'tv'], function (kind, next) {
         tmdb('/trending/' + kind + '/week?language=' + lang(), function (e, r) {
           var candidates = [];
           for (var j = 0; !e && j < r.results.length && j < 16; j++) addPick(candidates, r.results[j], kind);
           // Trending is only kept when it's on one of the TV's apps: the details say where.
           each(candidates, function (p, n) {
-            details(p, function (de) { if (!de && p.app) hot[kind].push(p); n(); });
+            details(p, function (de) {
+              if (!de && p.app) hot[kind].push(p);
+              if (!de && top[kind].length < 10) top[kind].push(p);   // this week's 10 most watched, wherever they are
+              n();
+            });
           }, next);
         });
       }, function () {
@@ -387,6 +403,7 @@ var Data = (function () {
             alternate(list, seen, fresh.movie, fresh.tv, 24);
             if (!list.length) { done(new Error('TMDB returned no recommendations')); return; }
             picks = list;
+            top10 = top;
             done(null);
           });
         });
@@ -399,7 +416,7 @@ var Data = (function () {
     if (!KEY || fetchingRecs || !installed.length) return;
     var t = Date.now(), p = hourPeriod(new Date()), st = sourceStamp();
     if (st === stamp && failedAt && t - failedAt < 10 * 60000 && t >= failedAt) return;
-    var stale = st !== stamp || p !== period || t - listAt > 6 * 3600000 || t < listAt || !picks.length || listLang !== I18N.lang;
+    var stale = st !== stamp || p !== period || t - listAt > 6 * 3600000 || t < listAt || !picks.length || !(top10.movie && top10.movie.length) || listLang !== I18N.lang;
     var wanted = all(), missing = false;
     for (var i = 0; i < wanted.length; i++) missing = missing || !wanted[i].detailed;
     if (!stale && !missing) return;
@@ -428,11 +445,13 @@ var Data = (function () {
     }
   }
 
+  var EXPLORE = 12;   // picks in Explore's row
+
   /** This hour's picks for the three tabs, without repeats (the screensaver shows them too). */
   function all() {
     var out = [], seen = {}, kinds = [null, 'movie', 'tv'];
     for (var k = 0; k < kinds.length; k++) {
-      var list = now(kinds[k]);
+      var list = now(kinds[k], kinds[k] ? 3 : EXPLORE);
       for (var i = 0; i < list.length; i++) if (!seen[keyOf(list[i])]) { seen[keyOf(list[i])] = true; out.push(list[i]); }
     }
     return out;
@@ -463,7 +482,9 @@ var Data = (function () {
     activeCoins: activeCoins,
     hasKey: function () { return !!KEY; },
     recsError: function () { return recsError; },
-    picks: now,
+    picks: function (kind) { return now(kind, kind ? 3 : EXPLORE); },
+    /** This week's 10 most watched movies ("movie") or shows ("tv"), worldwide; `where` says where to watch each. */
+    top10: function (kind) { return KEY ? top10[kind] || [] : []; },
     showcase: all,
     image: function (path, size) { return path ? 'https://image.tmdb.org/t/p/' + (size || 'w1280') + path : ''; },
 

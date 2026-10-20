@@ -68,6 +68,41 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .drawer-open #sky .lift { opacity: 0.32; }
 .night.drawer-open #sky .lift { opacity: 0.42; }
 
+/* Aurora (Home Settings → Background): three soft bands of light drifting over a deep sky, in place of the photo.
+   Soft from their gradients alone (no blur), and they move only by transform and opacity. */
+#sky .aurora { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; opacity: 0; -webkit-transition: opacity 2s; transition: opacity 2s; }
+.aurora #sky .aurora { opacity: 1; }
+.aurora #sky canvas { display: none; }
+.aurora #sky .day { background: -webkit-linear-gradient(top, #E6EEF4, #F3F1F7); background: linear-gradient(#E6EEF4, #F3F1F7); }
+.aurora #sky .night { background: -webkit-linear-gradient(top, #03060E, #0A1426); background: linear-gradient(#03060E, #0A1426); }
+.aurora #sky .veil { background: rgba(245, 245, 247, 0.4); }
+.aurora.night #sky .veil { background: rgba(3, 6, 14, 0.18); }
+#sky .aurora i { position: absolute; display: block; will-change: transform, opacity; }
+#sky .aurora .a1 {
+  left: -20%; top: -18%; width: 120%; height: 70%;
+  background: -webkit-radial-gradient(center, ellipse closest-side, rgba(52, 230, 160, 0.62), rgba(52, 230, 160, 0) 100%);
+  background: radial-gradient(ellipse closest-side, rgba(52, 230, 160, 0.62), rgba(52, 230, 160, 0) 100%);
+  -webkit-animation: aurora1 34s ease-in-out infinite alternate; animation: aurora1 34s ease-in-out infinite alternate;
+}
+#sky .aurora .a2 {
+  left: 10%; top: -6%; width: 110%; height: 60%;
+  background: -webkit-radial-gradient(center, ellipse closest-side, rgba(40, 170, 255, 0.5), rgba(40, 170, 255, 0) 100%);
+  background: radial-gradient(ellipse closest-side, rgba(40, 170, 255, 0.5), rgba(40, 170, 255, 0) 100%);
+  -webkit-animation: aurora2 42s ease-in-out infinite alternate; animation: aurora2 42s ease-in-out infinite alternate;
+}
+#sky .aurora .a3 {
+  left: 30%; top: 4%; width: 90%; height: 55%;
+  background: -webkit-radial-gradient(center, ellipse closest-side, rgba(170, 90, 255, 0.45), rgba(170, 90, 255, 0) 100%);
+  background: radial-gradient(ellipse closest-side, rgba(170, 90, 255, 0.45), rgba(170, 90, 255, 0) 100%);
+  -webkit-animation: aurora3 50s ease-in-out infinite alternate; animation: aurora3 50s ease-in-out infinite alternate;
+}
+@-webkit-keyframes aurora1 { from { -webkit-transform: translate3d(0, 0, 0) rotate(-8deg) scale(1); opacity: 0.85; } to { -webkit-transform: translate3d(14%, 8%, 0) rotate(4deg) scale(1.15); opacity: 1; } }
+@keyframes aurora1 { from { transform: translate3d(0, 0, 0) rotate(-8deg) scale(1); opacity: 0.85; } to { transform: translate3d(14%, 8%, 0) rotate(4deg) scale(1.15); opacity: 1; } }
+@-webkit-keyframes aurora2 { from { -webkit-transform: translate3d(0, 6%, 0) rotate(6deg) scale(1.1); opacity: 1; } to { -webkit-transform: translate3d(-18%, -4%, 0) rotate(-6deg) scale(0.95); opacity: 0.6; } }
+@keyframes aurora2 { from { transform: translate3d(0, 6%, 0) rotate(6deg) scale(1.1); opacity: 1; } to { transform: translate3d(-18%, -4%, 0) rotate(-6deg) scale(0.95); opacity: 0.6; } }
+@-webkit-keyframes aurora3 { from { -webkit-transform: translate3d(0, 0, 0) rotate(10deg) scale(0.9); opacity: 0.5; } to { -webkit-transform: translate3d(-24%, 10%, 0) rotate(-4deg) scale(1.1); opacity: 0.95; } }
+@keyframes aurora3 { from { transform: translate3d(0, 0, 0) rotate(10deg) scale(0.9); opacity: 0.5; } to { transform: translate3d(-24%, 10%, 0) rotate(-4deg) scale(1.1); opacity: 0.95; } }
+
 /* MARK: - Moving parts: the top fades and everything rises when the drawer opens. */
 
 /* Each part is its own stack, so a focused tile (z-index) never shows over the drawer, a sheet or the screensaver. */
@@ -260,6 +295,21 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   font-weight: 500;
   color: #6E6E73;
 }
+/* The picks slide as a row with the focus; Top 10 (Movies and Shows): numbered posters. */
+#cards { position: absolute; left: 0; top: 0; width: 100%; -webkit-transition: -webkit-transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1); transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1); }
+.card.poster { top: 236px; height: 390px; }
+.card.poster .img { border-radius: 16px; }
+.card.poster .rank {
+  position: absolute; left: 0; bottom: 0; width: 100%; height: 150px; padding: 0 0 0 16px; box-sizing: border-box;
+  background: -webkit-linear-gradient(top, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.72)); background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.72));
+  font-size: 110px; font-weight: 800; line-height: 170px; letter-spacing: -0.04em; color: #FFF; text-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+.card.poster .name { top: 408px; font-size: 26px; }
+.card.poster .meta { top: 446px; font-size: 22px; }
+.card.poster.here .meta { color: #1D1D1F; font-weight: 600; }
+.night .card.poster.here .meta { color: #F5F5F7; }
+.card.poster .meta:before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 5px; margin-right: 9px; vertical-align: 2px; background: rgba(128, 128, 132, 0.5); }
+.card.poster.here .meta:before { background: #30D158; }
 .night .card .img { background-color: #2C2C2E; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32); }
 .night .card .name { color: #F5F5F7; }
 .night .card .meta { color: rgba(245, 245, 247, 0.62); }
@@ -442,6 +492,17 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   -webkit-transition: -webkit-transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.28s;
   transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.28s;
 }
+/* The brands' own look, when the TV doesn't give the app's icon: the name in their colors. */
+.brand-netflix .word { color: #E50914; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
+.brand-youtube .word { left: 3%; right: 3%; color: #0F0F0F; letter-spacing: -0.03em; font-size: 27px !important; }
+.brand-youtube .word:before {
+  content: '\25B6'; display: inline-block; width: 40px; height: 28px; margin-right: 8px; vertical-align: 2px;
+  border-radius: 8px; background: #FF0033; color: #FFF; font-size: 14px; line-height: 28px; text-align: center; letter-spacing: 0;
+}
+.brand-hbogo .word { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.brand-max .word { font-weight: 800; letter-spacing: -0.01em; }
+.brand-spotify .word { color: #1ED760; }
+.brand-skyshowtime .word { font-weight: 800; }
 .cell .face img { position: absolute; left: 50%; top: 50%; max-width: 70%; max-height: 60%; -webkit-transform: translate(-50%, -50%); transform: translate(-50%, -50%); }
 .cell .face .word { position: absolute; left: 6%; right: 6%; top: 50%; margin-top: -22px; height: 44px; line-height: 44px; text-align: center; font-size: 32px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #FFF; }
 .cell .label { position: absolute; left: 0; right: 0; top: 186px; text-align: center; font-size: 24px; font-weight: 500; color: rgba(255, 255, 255, 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -524,3 +585,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* The Magic Remote's pointer: no text selection, no outlines. */
 * { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+/* An input shown inside the app (Samsung's HDMI): the TV draws it below the page, so the page steps aside. */
+html.watching, html.watching body { background: transparent !important; }
+.watching #stage { visibility: hidden; }
+.watching #stage * { -webkit-animation-play-state: paused; animation-play-state: paused; }

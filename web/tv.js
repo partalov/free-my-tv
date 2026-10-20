@@ -47,7 +47,14 @@ var TV = (function () {
 
   // Not shown among Samsung's apps: Smart Hub's own pieces, the platform's tools and players (but its browser and
   // Netflix, which live there too), services, keyboards and ad players. The rest is what Smart Hub shows.
-  var SAMSUNG_HIDDEN = /^(org\.volt\.|org\.tizen\.(?!browser$|netflix)|ise-|d75857a5-)|Service$|[Dd]aemon|Preview$|syspopup|[Hh]elper$|AdPlayer|AdSuite|[Kk]eyboard/;
+  var SAMSUNG_HIDDEN = /^(org\.volt\.|org\.tizen\.(?!browser$|netflix)|ise-|d75857a5-|ug-)|[Ss]ervice$|[Dd]aemon|Preview$|syspopup|[Hh]elper$|AdPlayer|AdSuite|[Kk]eyboard/;
+
+  // Not shown either: the apps' background helpers ("HBO GO service", "Max Worker"), by their names.
+  var SAMSUNG_HELPER = /(service|worker)$/i;
+
+  // Apps the TV has under more than one id with the same name: the one that opens like Smart Hub's tile. A 2017 TV
+  // has its built-in Netflix, a low-memory copy and the store's, which stays black when opened from here.
+  var SAMSUNG_PREFERRED = ['org.tizen.netflix-app'];
 
   // Samsung's live TV viewer: it shows whichever source the TV is on (the antenna, or the HDMI picked here).
   var SAMSUNG_VIEWER = 'org.tizen.tv-viewer';
@@ -74,10 +81,21 @@ var TV = (function () {
         var out = [];
         for (var i = 0; i < list.length; i++) {
           var a = list[i];
-          if (!a.id || a.show === false || a.id === self || SAMSUNG_HIDDEN.test(a.id)) continue;
+          if (!a.id || a.show === false || a.id === self || SAMSUNG_HIDDEN.test(a.id) || SAMSUNG_HELPER.test(a.name || '')) continue;
           var icon = a.iconPath || '';
           if (icon && icon.indexOf('://') < 0) icon = 'file://' + icon;
-          out.push({id: a.id, title: a.name || a.id, icon: icon, color: ''});
+          out.push({id: a.id, title: a.name || a.id, icon: icon, color: '', also: []});
+        }
+        // One app per name where one of them is preferred; `also` keeps the others' ids, for a shelf saved with them.
+        for (var p = 0; p < out.length; p++) {
+          if (SAMSUNG_PREFERRED.indexOf(out[p].id) < 0) continue;
+          for (var q = out.length - 1; q >= 0; q--) {
+            if (q !== p && out[q].title.toLowerCase() === out[p].title.toLowerCase()) {
+              out[p].also.push(out[q].id);
+              out.splice(q, 1);
+              if (q < p) p--;
+            }
+          }
         }
         // Smart Hub keeps its own order, which isn't readable: the same alphabetical order as All Apps elsewhere.
         out.sort(function (x, y) { var a = x.title.toLowerCase(), b = y.title.toLowerCase(); return a < b ? -1 : a > b ? 1 : 0; });
@@ -106,11 +124,23 @@ var TV = (function () {
     }
   }
 
-  /** Puts the TV on a source ("source:HDMI:2"), then brings the TV's viewer up to show it. */
+  /**
+   * Puts the TV on a source ("source:HDMI:2"). An HDMI input shows inside the app, full screen (done(true, true)):
+   * Samsung's viewer would show its own last source instead. The antenna opens in the viewer, for the channels.
+   */
   function samsungSource(spec, done) {
     var parts = spec.split(':'), type = parts[1], number = +parts[2];
     function show(ok) {
       if (!ok) { if (done) done(false); return; }
+      if (type !== 'TV') {
+        try {
+          window.tizen.tvwindow.show(function () { if (done) done(true, true); }, function () { if (done) done(false); },
+              ['0%', '0%', '100%', '100%'], 'MAIN');
+        } catch (e) {
+          if (done) done(false);
+        }
+        return;
+      }
       samsungLaunch(SAMSUNG_VIEWER, function (shown) {
         if (!shown) {
           try { window.tizen.application.getCurrentApplication().hide(); } catch (e) {}
@@ -147,14 +177,36 @@ var TV = (function () {
     });
   }
 
-  /** Samsung's settings: whichever app answers the platform's "settings" request. */
+  // Samsung's settings apps, by the ids they've had over the years; the first one installed opens. org.tizen.menu is
+  // 2017's (and before the guess below, which would also match org.tizen.volume-setting).
+  var SAMSUNG_SETTINGS = ['org.tizen.menu', 'com.samsung.tv.menu', 'org.tizen.tv-settings', 'org.tizen.settings', 'org.tizen.setting'];
+
+  /** Samsung's settings: whichever app answers the platform's "settings" request, else a settings app by its id. */
   function samsungSettings(done) {
+    function byId() {
+      try {
+        window.tizen.application.getAppsInfo(function (list) {
+          var ids = [], found = [];
+          for (var i = 0; i < list.length; i++) ids.push(list[i].id);
+          for (var j = 0; j < SAMSUNG_SETTINGS.length; j++) if (ids.indexOf(SAMSUNG_SETTINGS[j]) >= 0) found.push(SAMSUNG_SETTINGS[j]);
+          // Not one of the known ids: any system app named after the settings.
+          for (var k = 0; k < list.length; k++) {
+            if (/(^|[.-])(tv-?)?settings?($|[.-])|\.menu$/i.test(list[k].id) && found.indexOf(list[k].id) < 0) found.push(list[k].id);
+          }
+          (function next(n) {
+            if (n >= found.length) { if (done) done(false); return; }
+            samsungLaunch(found[n], function (ok) { if (ok) { if (done) done(true); } else next(n + 1); });
+          })(0);
+        }, function () { if (done) done(false); });
+      } catch (e) {
+        if (done) done(false);
+      }
+    }
     try {
       var control = new window.tizen.ApplicationControl('http://tizen.org/appcontrol/operation/setting', null, null, null, []);
-      window.tizen.application.launchAppControl(control, null, function () { if (done) done(true); },
-          function () { if (done) done(false); });
+      window.tizen.application.launchAppControl(control, null, function () { if (done) done(true); }, byId);
     } catch (e) {
-      if (done) done(false);
+      byId();
     }
   }
 
@@ -224,6 +276,12 @@ var TV = (function () {
         }
         done(list);
       });
+    },
+
+    /** Hides an input shown inside the app (Samsung). */
+    stopWatching: function () {
+      if (!samsung) return;
+      try { window.tizen.tvwindow.hide(function () {}, function () {}, 'MAIN'); } catch (e) {}
     },
 
     /** The TV's own settings; done(ok). */

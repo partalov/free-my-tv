@@ -92,8 +92,8 @@ screen stays. Two ways:
 6. **Build and sign:** `python3 tizen/build.py --sign <profile>` must end with `Built FreeMyTV-tizen.wgt (...,
    signed with "<profile>")`.
 7. **Install:** `sdb connect <IP>`, then `tizen install -n FreeMyTV-tizen.wgt -t <serial from sdb devices>` and
-   `tizen run -p FreeMyTVio.FreeMyTV -t <serial>` to open it. Updates need the same certificate: the TV refuses one
-   signed by another (`tizen uninstall -p FreeMyTVio.FreeMyTV -t <serial>` first).
+   `tizen run -p FreeMyTVmk.FreeMyTV -t <serial>` to open it. Updates need the same certificate: the TV refuses one
+   signed by another (`tizen uninstall -p FreeMyTVmk.FreeMyTV -t <serial>` first).
 8. **Tell them:** *Autorun Last App* in the TV's settings (under Start Screen Options; where it is changes by year)
    makes the TV turn on into Free My TV.
 
