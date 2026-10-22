@@ -86,6 +86,13 @@ final class Spanish {
             case "Automatic": return "Automático";
             case "Light": return "Claro";
             case "Dark": return "Oscuro";
+            case "Background": return "Fondo";
+            case "Photo": return "Foto";
+            case "Aurora": return "Aurora";
+            case "Rent or buy": return "Alquilar o comprar";
+            case "In cinemas": return "En cines";
+            case "Not streaming here": return "Sin streaming aquí";
+            case " (not on this TV's apps)": return " (no está en las apps del TV)";
             case "Weather widget": return "Widget del clima";
             // What TalkBack reads on the drawer's weather card (#47)
             case ". High ": return ". Máxima ";

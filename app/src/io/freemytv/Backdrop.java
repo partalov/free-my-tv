@@ -17,6 +17,8 @@ import android.graphics.Shader;
  *  - the Liquid Glass version (480×270, lightly blurred): the photo shows through the shelf and the cards;
  *  - with forLight: the cards (the photo without scrims, cropped wide and tall, already at the focused card size) and
  *    the frosted and glass versions blended with white (by day) and with near-black (at night).
+ * Two more kinds have only the background and the glass (no full photo, no cards): a Top 10 title's photo (sky), and
+ * the aurora (Home Settings → Background), painted once with gradients so it costs nothing on any TV.
  * Only what is needed gets built (with forLight, no full photo: the cards are lightweight, so all 9 for the three tabs
  * fit in memory, ready); the other fields stay null.
  * The final image lives only in GPU memory (HARDWARE): drawing it costs one texture, and the process doesn't hold 8 MB.
@@ -36,6 +38,13 @@ final class Backdrop {
 
     private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
                      int[] night, int[] nightGlass) {
+        this(image, frost, glass, wide, tall, light, lightGlass, night, nightGlass,
+                light == null ? null : Bitmap.createBitmap(light, FW, FH, Bitmap.Config.ARGB_8888),
+                night == null ? null : Bitmap.createBitmap(night, FW, FH, Bitmap.Config.ARGB_8888));
+    }
+
+    private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
+                     int[] night, int[] nightGlass, Bitmap lightImage, Bitmap nightImage) {
         this.image = image;
         this.frost = frost;
         this.glass = glass;
@@ -45,8 +54,8 @@ final class Backdrop {
         this.lightGlass = lightGlass;
         this.nightFrost = night;
         this.nightGlass = nightGlass;
-        lightImage = light == null ? null : Bitmap.createBitmap(light, FW, FH, Bitmap.Config.ARGB_8888);
-        nightImage = night == null ? null : Bitmap.createBitmap(night, FW, FH, Bitmap.Config.ARGB_8888);
+        this.lightImage = lightImage;
+        this.nightImage = nightImage;
     }
 
     static Backdrop make(Bitmap src, boolean forLight) {
@@ -57,18 +66,8 @@ final class Backdrop {
         float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
         c.drawBitmap(src, null, new RectF((W - sw) / 2, (H - sh) / 2, (W + sw) / 2, (H + sh) / 2), photo);
         src.recycle();
-        if (forLight) {
-            // Light design: everything comes from the photo without scrims.
-            Bitmap wide = card(out, WIDE_W, WIDE_H), tall = card(out, TALL_W, TALL_H);
-            int[] frost = reduce(out, FW, FH, 3, 3);
-            int[] light = whiten(frost.clone(), 0.82f);
-            int[] glass = reduce(out, GW, GH, 2, 2);
-            int[] lightGlass = whiten(glass.clone(), 0.74f);
-            int[] night = darken(frost.clone(), 0.76f);
-            int[] nightGlass = darken(glass, 0.56f);
-            out.recycle();
-            return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass);
-        }
+        // Light design: everything comes from the photo without scrims.
+        if (forLight) return light(out, card(out, WIDE_W, WIDE_H), card(out, TALL_W, TALL_H));
 
         float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));
         Paint scrim = new Paint(Paint.DITHER_FLAG);
@@ -95,6 +94,70 @@ final class Backdrop {
         int[] frost = reduce(out, FW, FH, 3, 3);
         int[] glass = reduce(out, GW, GH, 2, 2);
         return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
+    }
+
+    /** The light design's background and glass from a photo (and its cards, if any); recycles `out`. */
+    private static Backdrop light(Bitmap out, Bitmap wide, Bitmap tall) {
+        int[] frost = reduce(out, FW, FH, 3, 3);
+        int[] light = whiten(frost.clone(), 0.82f);
+        int[] glass = reduce(out, GW, GH, 2, 2);
+        int[] lightGlass = whiten(glass.clone(), 0.74f);
+        int[] night = darken(frost.clone(), 0.76f);
+        int[] nightGlass = darken(glass, 0.56f);
+        out.recycle();
+        return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass);
+    }
+
+    /** A Top 10 title's photo as the background only (it's only ever shown blurred, so half size is plenty). */
+    static Backdrop sky(Bitmap src) {
+        Bitmap out = Bitmap.createBitmap(W / 2, H / 2, Bitmap.Config.ARGB_8888);
+        float scale = Math.max((float) out.getWidth() / src.getWidth(), (float) out.getHeight() / src.getHeight());
+        float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
+        new Canvas(out).drawBitmap(src, null, new RectF((out.getWidth() - sw) / 2, (out.getHeight() - sh) / 2,
+                (out.getWidth() + sw) / 2, (out.getHeight() + sh) / 2), new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG));
+        src.recycle();
+        return light(out, null, null);
+    }
+
+    /**
+     * The aurora background, like the LG and Samsung app's: three soft bands of light (green, blue, violet) over a pale
+     * sky by day and a deep one at night. Painted once at half size; scaled up, the gradients stay smooth.
+     */
+    static Backdrop aurora() {
+        Bitmap day = auroraImage(0xFFE6EEF4, 0xFFF3F1F7, 0x66F5F5F7);
+        Bitmap night = auroraImage(0xFF03060E, 0xFF0A1426, 0x2E03060E);
+        int[] frost = reduce(day, FW, FH, 3, 3), glass = reduce(day, GW, GH, 2, 2);
+        int[] nightFrost = reduce(night, FW, FH, 3, 3), nightGlass = reduce(night, GW, GH, 2, 2);
+        return new Backdrop(null, frost, null, null, null, frost, glass, nightFrost, nightGlass, gpu(day), gpu(night));
+    }
+
+    private static Bitmap auroraImage(int top, int bottom, int veil) {
+        int w = W / 2, h = H / 2;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, 0, h, top, bottom, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        // Each band: an ellipse (center x, y, half width, half height as fractions of the screen), a tilt and a color.
+        band(c, p, w, h, 0.47f, 0.21f, 0.64f, 0.37f, -2, 0xFF34E6A0, 0.62f * 0.92f);
+        band(c, p, w, h, 0.56f, 0.25f, 0.56f, 0.31f, 0, 0xFF28AAFF, 0.5f * 0.8f);
+        band(c, p, w, h, 0.63f, 0.36f, 0.45f, 0.28f, 3, 0xFFAA5AFF, 0.45f * 0.72f);
+        p.setShader(null);
+        p.setColor(veil);
+        c.drawRect(0, 0, w, h, p);
+        return b;
+    }
+
+    private static void band(Canvas c, Paint p, int w, int h, float x, float y, float rx, float ry, float tilt, int color, float alpha) {
+        int rgb = color & 0xFFFFFF, a = Math.round(alpha * 255);
+        p.setShader(new android.graphics.RadialGradient(0, 0, 1, new int[] {a << 24 | rgb, Math.round(a * 0.45f) << 24 | rgb, rgb},
+                new float[] {0, 0.5f, 1}, Shader.TileMode.CLAMP));
+        c.save();
+        c.translate(x * w, y * h);
+        c.rotate(tilt);
+        c.scale(rx * w, ry * h);
+        c.drawRect(-1, -1, 1, 1, p);
+        c.restore();
     }
 
     /** How many times smaller the screensaver photo's frosted version is (the glass math uses the same number). */

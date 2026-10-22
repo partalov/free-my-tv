@@ -37,6 +37,9 @@ import java.util.concurrent.Executors;
  * Globoplay...), via TMDB (an open movie database that knows what streams where in each country). Three per hour.
  * "Watch" opens the service's app.
  *
+ * Movies and Shows also get this week's Top 10 (TMDB's trending, wherever it streams), as posters that say where to
+ * watch each one.
+ *
  * Each person uses their own free TMDB key (config.properties "tmdb_key", built into the app). It never goes to the log.
  */
 final class Recs {
@@ -44,6 +47,7 @@ final class Recs {
         int id;
         String kind;            // "movie" or "tv"
         String title, backdrop, meta = "", app, pkg;
+        String poster, where = "";   // Top 10: the poster, and where it's on (a service, rent or buy, cinemas)
         boolean detailed;
     }
 
@@ -51,9 +55,11 @@ final class Recs {
 
     private static final String API = "https://api.themoviedb.org/3";
     private static final String IMAGES = "https://image.tmdb.org/t/p/original";
+    /** Top 10: posters at w342 (about the focused poster's size) and photos at w780 (only blurred, never shown sharp). */
+    private static final String POSTERS = "https://image.tmdb.org/t/p/w342", PHOTOS = "https://image.tmdb.org/t/p/w780";
     private static final long LIST_EVERY = 6 * 3600_000L;
     /** Bump when what is saved for each title changes (the saved list is discarded and fetched again). */
-    private static final int CACHE_VERSION = 3;
+    private static final int CACHE_VERSION = 4;
     private static final int MANHA = 0, TARDE = 1, NOITE = 2;
     static final String[] PERIOD_LABEL = {"PARA ESTA MANHÃ", "PARA ESTA TARDE", "PARA ESTA NOITE"};
     static final String[] PERIOD_LABEL_RU = {"ЭТИМ УТРОМ", "СЕГОДНЯ ДНЁМ", "СЕГОДНЯ ВЕЧЕРОМ"};
@@ -102,6 +108,13 @@ final class Recs {
     private final Map<String, Backdrop> images = new LinkedHashMap<>();   // this hour's, built and ready to draw
     private final java.util.Set<String> pending = new java.util.HashSet<>();
     private volatile List<Pick> picks = new ArrayList<>();
+    private volatile List<Pick> topMovies = new ArrayList<>(), topShows = new ArrayList<>();
+    // Top 10 images, loaded on their own thread (the list fetch doesn't hold them up): posters and blurred photos.
+    private final ExecutorService art = Executors.newSingleThreadExecutor();
+    private final Map<String, Bitmap> posters = new LinkedHashMap<>();
+    private final Map<String, Backdrop> skies = new LinkedHashMap<>();
+    private final java.util.Set<String> artPending = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private volatile String skyWanted;
     private volatile int period = -1;
     private volatile long listAt;
     private volatile boolean fetching;
@@ -117,6 +130,10 @@ final class Recs {
         try {
             String saved = cache.getString("picks", null);
             if (saved != null) picks = parse(new JSONArray(saved));
+            saved = cache.getString("topMovies", null);
+            if (saved != null) topMovies = parse(new JSONArray(saved));
+            saved = cache.getString("topShows", null);
+            if (saved != null) topShows = parse(new JSONArray(saved));
             period = cache.getInt("period", -1);
             listAt = cache.getLong("listAt", 0);
             listLanguage = cache.getString("language", cache.getBoolean("english", false) ? "en" : "pt");
@@ -204,6 +221,93 @@ final class Recs {
         return p == null || p.app == null ? "" : SERVICE_NAME.get(p.app);
     }
 
+    /** This week's 10 most watched movies ("movie") or shows ("tv"), wherever they stream. */
+    List<Pick> top10(String kind) {
+        return hasKey(context) ? ("tv".equals(kind) ? topShows : topMovies) : new ArrayList<>();
+    }
+
+    /** The title plays in one of the TV's apps (Top 10 titles may not). */
+    boolean onTv(Pick p) {
+        return p != null && p.pkg != null && installed(p.pkg);
+    }
+
+    /** A Top 10 poster, ready to draw (or null: loads it in the background and notifies when it's ready). */
+    Bitmap poster(Pick p) {
+        if (p == null || p.poster == null || p.poster.isEmpty()) return null;
+        final String key = p.poster;
+        synchronized (posters) {
+            Bitmap b = posters.get(key);
+            if (b != null) return b;
+            if (!artPending.add("p" + key)) return null;
+        }
+        art.execute(() -> {
+            try {
+                File f = new File(new File(context.getCacheDir(), "posters"), key.replace("/", ""));
+                download(POSTERS + key, f, 40);
+                Bitmap b = BitmapFactory.decodeFile(f.getPath());
+                if (b == null) {
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                    return;
+                }
+                b = Backdrop.gpu(b);
+                synchronized (posters) {
+                    posters.put(key, b);
+                    while (posters.size() > 24) posters.remove(posters.keySet().iterator().next());
+                }
+                notifyListeners();
+            } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                AppLog.w("poster: " + e.getMessage());
+            } finally {
+                synchronized (posters) { artPending.remove("p" + key); }
+            }
+        });
+        return null;
+    }
+
+    /**
+     * A Top 10 title's photo as the home screen background (only the blurred versions, from a smaller image), or null:
+     * builds it in the background and notifies. Only the last one asked for is built (scrolling fast skips the rest).
+     */
+    Backdrop sky(Pick p) {
+        if (p == null || p.backdrop == null) return null;
+        final String key = p.backdrop;
+        synchronized (skies) {
+            skyWanted = key;
+            Backdrop b = skies.get(key);
+            if (b != null) {
+                skies.remove(key);   // most recently used last
+                skies.put(key, b);
+                return b;
+            }
+            if (!artPending.add("s" + key)) return null;
+        }
+        art.execute(() -> {
+            try {
+                if (!key.equals(skyWanted)) return;
+                File f = new File(new File(context.getCacheDir(), "photos"), key.replace("/", ""));
+                download(PHOTOS + key, f, 40);
+                Bitmap b = BitmapFactory.decodeFile(f.getPath());
+                if (b == null) {
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                    return;
+                }
+                Backdrop sky = Backdrop.sky(b);
+                synchronized (skies) {
+                    skies.put(key, sky);
+                    while (skies.size() > 6) skies.remove(skies.keySet().iterator().next());
+                }
+                notifyListeners();
+            } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                AppLog.w("top 10 photo: " + e.getMessage());
+            } finally {
+                synchronized (skies) { artPending.remove("s" + key); }
+            }
+        });
+        return null;
+    }
+
     /** The pick's ready backdrop (or null: builds it in the background and notifies when it's ready). */
     Backdrop backdrop(Pick p) {
         if (p == null || p.backdrop == null) return null;
@@ -241,7 +345,7 @@ final class Recs {
         if (!newKey && failedAt != 0 && sinceFail >= 0 && sinceFail < 10 * 60_000L) return;
         int p = period(now);
         boolean stale = newKey || p != period || now - listAt > LIST_EVERY || now < listAt || picks.isEmpty()
-                || !listLanguage.equals(Ui.language);
+                || topMovies.isEmpty() || !listLanguage.equals(Ui.language);
         boolean missing = false;
         for (Pick pick : wanted()) missing |= !pick.detailed || !hasImage(pick);
         if (!stale && !missing) return;
@@ -385,8 +489,10 @@ final class Recs {
         String common = "&language=" + lang() + "&watch_region=" + REGION + "&with_watch_monetization_types=flatrate&include_adult=false"
                 + "&sort_by=popularity.desc&with_watch_providers=" + URLEncoder.encode(ids.toString(), "UTF-8");
         // 1. Trending this week (TMDB goes by what people are watching and searching for right now), only what is
-        //    on one of the TV's services: the details say where (and are then ready).
+        //    on one of the TV's services: the details say where (and are then ready). The first 10 with details, on
+        //    the TV's apps or not, are the Top 10.
         List<Pick> hotMovies = new ArrayList<>(), hotShows = new ArrayList<>();
+        List<Pick> top = new ArrayList<>(), topTv = new ArrayList<>();
         for (String kind : new String[] {"movie", "tv"}) {
             JSONArray hot = get("/trending/" + kind + "/week?language=" + lang()).getJSONArray("results");
             List<Pick> candidates = new ArrayList<>();
@@ -398,6 +504,8 @@ final class Recs {
                     continue;
                 }
                 if (pick.pkg != null) (kind.equals("movie") ? hotMovies : hotShows).add(pick);
+                List<Pick> ten = kind.equals("movie") ? top : topTv;
+                if (ten.size() < 10) ten.add(pick);
             }
         }
         // 2. Recent releases on the TV's services: movies from the past year and shows with a new episode in the
@@ -416,6 +524,8 @@ final class Recs {
         alternate(list, seen, newMovies, newShows, 24);
         if (list.isEmpty()) throw new IOException("TMDB returned no recommendations");
         picks = list;
+        topMovies = top;
+        topShows = topTv;
         period = p;
         listAt = System.currentTimeMillis();
         listLanguage = Ui.language;
@@ -451,6 +561,8 @@ final class Recs {
         p.kind = kind;
         p.title = o.optString(kind.equals("movie") ? "title" : "name");
         p.backdrop = backdrop;
+        String poster = o.optString("poster_path", "");
+        p.poster = "null".equals(poster) ? "" : poster;
         list.add(p);
     }
 
@@ -490,6 +602,19 @@ final class Recs {
             }
         }
         if (p.app != null) parts.add(SERVICE_NAME.get(p.app));
+        // Top 10: where it's on, on the TV's apps or not (a service, else rent or buy, else cinemas).
+        if (p.app != null) {
+            p.where = SERVICE_NAME.get(p.app);
+        } else if (flat != null && flat.length() > 0) {
+            String name = flat.getJSONObject(0).optString("provider_name");
+            String[] s = service(name);
+            p.where = s != null ? SERVICE_NAME.get(s[1]) : name;
+        } else if (br != null && (br.optJSONArray("rent") != null || br.optJSONArray("buy") != null)) {
+            p.where = Ui.tr("Alugar ou comprar", "Rent or buy", "Alquilar o comprar");
+        } else {
+            p.where = p.kind.equals("movie") ? Ui.tr("Nos cinemas", "In cinemas", "En cines")
+                    : Ui.tr("Sem streaming aqui", "Not streaming here", "Sin streaming aquí");
+        }
         p.meta = String.join(" · ", parts);
         p.detailed = true;
     }
@@ -584,12 +709,16 @@ final class Recs {
     // MARK: - Images (TMDB originals on disk, up to 24 so the whole list fits; this hour's kept ready in memory)
 
     private void download(Pick p) throws IOException {
-        File f = imageFile(p);
+        download(IMAGES + p.backdrop, imageFile(p), 24);
+    }
+
+    /** Downloads to `f` (unless it's there), keeping the folder's newest `keep` files. */
+    private static void download(String url, File f, int keep) throws IOException {
         if (f.exists()) return;
         //noinspection ResultOfMethodCallIgnored
         f.getParentFile().mkdirs();
         File part = new File(f.getPath() + ".part");
-        HttpURLConnection c = (HttpURLConnection) new URL(IMAGES + p.backdrop).openConnection();
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(8000);
         c.setReadTimeout(20000);
         try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(part)) {
@@ -604,7 +733,7 @@ final class Recs {
             c.disconnect();
         }
         if (!part.renameTo(f)) throw new IOException("couldn't save the image");
-        prune(f.getParentFile());
+        prune(f.getParentFile(), keep);
     }
 
     /** Reads the original (≥ 1920 wide) and builds the backdrop (Backdrop: cards plus frosted and glass versions). */
@@ -646,9 +775,15 @@ final class Recs {
         synchronized (images) {
             images.keySet().retainAll(keep);
         }
+        synchronized (posters) {
+            posters.clear();
+        }
+        synchronized (skies) {
+            skies.clear();
+        }
     }
 
-    private static void prune(File dir) {
+    private static void prune(File dir, int keep) {
         // A download cut off when the system stopped the app leaves its .part behind.
         long stale = System.currentTimeMillis() - 10 * 60_000L;
         File[] parts = dir.listFiles((d, name) -> name.endsWith(".part"));
@@ -657,9 +792,9 @@ final class Recs {
             if (parts[i].lastModified() < stale) parts[i].delete();
         }
         File[] files = dir.listFiles((d, name) -> !name.endsWith(".part"));
-        if (files == null || files.length <= 24) return;
+        if (files == null || files.length <= keep) return;
         Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
-        for (int i = 0; i < files.length - 24; i++) {
+        for (int i = 0; i < files.length - keep; i++) {
             //noinspection ResultOfMethodCallIgnored
             files[i].delete();
         }
@@ -669,17 +804,22 @@ final class Recs {
 
     private void save() {
         try {
-            JSONArray a = new JSONArray();
-            for (Pick p : picks) {
-                a.put(new JSONObject().put("id", p.id).put("kind", p.kind).put("title", p.title).put("backdrop", p.backdrop)
-                        .put("meta", p.meta).put("app", p.app == null ? "" : p.app).put("pkg", p.pkg == null ? "" : p.pkg)
-                        .put("detailed", p.detailed));
-            }
-            cache.edit().putString("picks", a.toString()).putInt("period", period).putLong("listAt", listAt)
+            cache.edit().putString("picks", json(picks).toString()).putString("topMovies", json(topMovies).toString())
+                    .putString("topShows", json(topShows).toString()).putInt("period", period).putLong("listAt", listAt)
                     .putString("language", listLanguage)
                     .putLong("keyStamp", keyStamp).putInt("version", CACHE_VERSION).apply();
         } catch (Exception ignored) {
         }
+    }
+
+    private static JSONArray json(List<Pick> list) throws org.json.JSONException {
+        JSONArray a = new JSONArray();
+        for (Pick p : list) {
+            a.put(new JSONObject().put("id", p.id).put("kind", p.kind).put("title", p.title).put("backdrop", p.backdrop)
+                    .put("meta", p.meta).put("app", p.app == null ? "" : p.app).put("pkg", p.pkg == null ? "" : p.pkg)
+                    .put("poster", p.poster == null ? "" : p.poster).put("where", p.where).put("detailed", p.detailed));
+        }
+        return a;
     }
 
     private static List<Pick> parse(JSONArray a) {
@@ -695,6 +835,8 @@ final class Recs {
             p.meta = o.optString("meta");
             p.app = o.optString("app").isEmpty() ? null : o.optString("app");
             p.pkg = o.optString("pkg").isEmpty() ? null : o.optString("pkg");
+            p.poster = o.optString("poster");
+            p.where = o.optString("where");
             p.detailed = o.optBoolean("detailed");
             out.add(p);
         }

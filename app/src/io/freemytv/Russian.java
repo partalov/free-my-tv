@@ -91,6 +91,13 @@ final class Russian {
             case "Automatic": return "Автоматически";
             case "Light": return "Светлая";
             case "Dark": return "Тёмная";
+            case "Background": return "Фон";
+            case "Photo": return "Фото";
+            case "Aurora": return "Сияние";
+            case "Rent or buy": return "Аренда или покупка";
+            case "In cinemas": return "В кинотеатрах";
+            case "Not streaming here": return "Здесь нет в стриминге";
+            case " (not on this TV's apps)": return " (нет среди приложений телевизора)";
             case "Weather widget": return "Виджет погоды";
             // What TalkBack reads on the drawer's weather card (#47)
             case ". High ": return ". Максимум ";

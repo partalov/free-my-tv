@@ -33,7 +33,7 @@ final class Ui {
     static volatile String language = language();
     static volatile boolean en = "en".equals(language), es = "es".equals(language), de = "de".equals(language),
             ru = "ru".equals(language);
-    static Typeface thin, light, displayMedium, displaySemibold, regular, medium, semibold;
+    static Typeface thin, light, displayMedium, displaySemibold, displayHeavy, regular, medium, semibold;
     private static boolean loaded;
     private static final Rect BOUNDS = new Rect();
     private static final RectF OVAL = new RectF();
@@ -46,6 +46,7 @@ final class Ui {
         light = font(a, 32, 300);
         displayMedium = font(a, 32, 500);
         displaySemibold = font(a, 32, 600);
+        displayHeavy = font(a, 32, 800);
         regular = font(a, 14, 400);
         medium = font(a, 14, 500);
         semibold = font(a, 14, 600);

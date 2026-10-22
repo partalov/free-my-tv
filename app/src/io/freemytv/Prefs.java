@@ -77,6 +77,13 @@ final class Prefs {
 
     static void setTheme(String v) { put("theme", v); }
 
+    /** "photo" (the focused title's photo, blurred) or "aurora" (a fixed aurora instead). */
+    static String background() {
+        return "aurora".equals(sp().getString("background", "photo")) ? "aurora" : "photo";
+    }
+
+    static void setBackground(String v) { put("background", v); }
+
     // MARK: - City
 
     static String city() { return sp().getString("city", Config.CITY).trim(); }

@@ -92,6 +92,13 @@ final class German {
             case "Automatic": return "Automatisch";
             case "Light": return "Hell";
             case "Dark": return "Dunkel";
+            case "Background": return "Hintergrund";
+            case "Photo": return "Foto";
+            case "Aurora": return "Polarlicht";
+            case "Rent or buy": return "Leihen oder kaufen";
+            case "In cinemas": return "Im Kino";
+            case "Not streaming here": return "Hier nicht im Stream";
+            case " (not on this TV's apps)": return " (nicht in den Apps des Fernsehers)";
             case "Weather widget": return "Wetter-Widget";
             // What TalkBack reads on the drawer's weather card (#47)
             case ". High ": return ". Höchstwert ";
