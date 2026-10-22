@@ -84,6 +84,10 @@ final class Prefs {
 
     static void setBackground(String v) { put("background", v); }
 
+    /** The Sports tab (Formula 1, NBA, NFL) after Shows. */
+    static boolean sports() { return sp().getBoolean("sports", true); }
+    static void setSports(boolean on) { put("sports", on); }
+
     // MARK: - City
 
     static String city() { return sp().getString("city", Config.CITY).trim(); }

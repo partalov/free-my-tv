@@ -69,6 +69,12 @@ final class HomeMode {
         // Philco (Homwee/Changhong)
         "com.homwee.aipont",                                                          // AI PONT: promo channels, app downloads
         "com.homwee.help",                                                            // user manual
+        // Xiaomi (Mi Box S)
+        "com.miui.tv.analytics",                                                      // Xiaomi usage analytics
+        "tv.alphonso.alphonso_eula",                                                  // Alphonso: watches what's on screen for ads
+        "com.mitv.tvhome.michannel",                                                  // Mi Channel: Xiaomi's promo channels
+        "com.xm.webcontent",                                                          // Xiaomi web promo content
+        "android.autoinstalls.config.xioami.mibox3",                                  // installs promoted apps on its own
     };
 
     /** The voice assistant, only with disable_assistant=true in config.properties (the mic button stops working). */
@@ -98,7 +104,11 @@ final class HomeMode {
         "com.mediatek.tv.factorykey", "com.mediatek.testpq", "com.mediatek.overlay.tvcenter",
         "com.mediatek.overlay.tvsettings", "com.homwee.overlay.tvservice", "com.homwee.synckey", "com.homwee.upgrade",
         "com.homwee.dmt.upgrade", "com.homwee.factory", "com.homwee.chinstallapk", "com.homwee.chtvmanager",
-        "com.mstar.android.tv.disclaimercustomization"));
+        "com.mstar.android.tv.disclaimercustomization",
+        // Xiaomi (Mi Box S, Amlogic): system, remote pairing, overlays, updates, setup, casting, downloads, player
+        "com.droidlogic", "com.droidlogic.ble", "com.droidlogic.overlay", "mitv.service", "com.xiaomi.mitv.res",
+        "com.xiaomi.mitv.updateservice", "com.xiaomi.android.tvsetup.partnercustomizer", "com.mitv.milinkservice",
+        "com.mitv.download.service", "com.mitv.tvhome.atv", "com.mitv.videoplayer"));
 
     /** One switch at a time (jobs can overlap: a boot check and a button press). */
     private static final Object RUN = new Object();

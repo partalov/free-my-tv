@@ -94,6 +94,17 @@ final class Russian {
             case "Background": return "Фон";
             case "Photo": return "Фото";
             case "Aurora": return "Сияние";
+            case "Loading…": return "Загрузка…";
+            case "No race left this season": return "В этом сезоне гонок больше нет";
+            case "Live now": return "Сейчас в эфире";
+            case "in ": return "через ";
+            case "Final": return "Завершён";
+            case "Last race": return "Последняя гонка";
+            case "Standings": return "Личный зачёт";
+            case "No games today": return "Сегодня нет матчей";
+            case "Sports tab": return "Вкладка «Спорт»";
+            case "Open in ": return "Открыть в ";
+            case "Trailer": return "Трейлер";
             case "Rent or buy": return "Аренда или покупка";
             case "In cinemas": return "В кинотеатрах";
             case "Not streaming here": return "Здесь нет в стриминге";

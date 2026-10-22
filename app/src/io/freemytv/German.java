@@ -95,6 +95,17 @@ final class German {
             case "Background": return "Hintergrund";
             case "Photo": return "Foto";
             case "Aurora": return "Polarlicht";
+            case "Loading…": return "Wird geladen…";
+            case "No race left this season": return "Keine Rennen mehr in dieser Saison";
+            case "Live now": return "Live";
+            case "in ": return "in ";
+            case "Final": return "Ende";
+            case "Last race": return "Letztes Rennen";
+            case "Standings": return "WM-Stand";
+            case "No games today": return "Heute keine Spiele";
+            case "Sports tab": return "Sport-Tab";
+            case "Open in ": return "Öffnen in ";
+            case "Trailer": return "Trailer";
             case "Rent or buy": return "Leihen oder kaufen";
             case "In cinemas": return "Im Kino";
             case "Not streaming here": return "Hier nicht im Stream";

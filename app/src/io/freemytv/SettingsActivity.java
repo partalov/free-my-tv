@@ -115,6 +115,11 @@ public class SettingsActivity extends Activity {
     static final class SettingsView extends View implements Choreographer.FrameCallback {
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5;
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
+
+        /** Row pitch of the lists: closer together when there are too many rows for the screen (Home Settings in reais). */
+        private float listStep() {
+            return Math.min(LIST_ROW_H + LIST_ROW_GAP, 800f / Math.max(1, rowCount()));
+        }
         private static final int PICK_VISIBLE = 9;
         private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 186, ROW_H = 74, ROW_GAP = 8, CHOICE_H = 104;
         private static final int AMBER = 0xFFFFC266, INK = 0xFF1C1C1E;
@@ -253,8 +258,8 @@ public class SettingsActivity extends Activity {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
                 height = CHOICE_H;
             } else {
-                top = LIST_TOP + 20 + row * (LIST_ROW_H + LIST_ROW_GAP);
-                height = LIST_ROW_H;
+                top = LIST_TOP + 20 + row * listStep();
+                height = listStep() - LIST_ROW_GAP;
             }
             focusBox.set(LIST_X * k, top * k, LIST_R * k, (top + height) * k);
             return focusBox;
@@ -626,8 +631,8 @@ public class SettingsActivity extends Activity {
 
         private static final String[] LANGUAGES = {"auto", "pt", "en", "es", "de", "ru"}, UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"},
                 BACKGROUNDS = {"photo", "aurora"};
-        /** Home Settings: language, temperature, theme, background, weather, city, quotes, then one row per coin. */
-        private static final int CITY_ROW = 5, COIN_ROWS = 7;
+        /** Home Settings: language, temperature, theme, background, sports, weather, city, quotes, then one row per coin. */
+        private static final int CITY_ROW = 6, COIN_ROWS = 8;
 
         private boolean dollar() {
             return "BRL".equalsIgnoreCase(Config.CURRENCY.trim());
@@ -639,6 +644,7 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Temperatura", "Temperature"));
             l.add(Ui.tr("Tema", "Theme"));
             l.add(Ui.tr("Fundo", "Background", "Fondo"));
+            l.add(Ui.tr("Aba Esportes", "Sports tab", "Pestaña Deportes"));
             l.add(Ui.tr("Widget do clima", "Weather widget"));
             l.add(Ui.tr("Cidade", "City"));
             l.add(Ui.tr("Widget de cotações", "Quotes widget"));
@@ -660,9 +666,10 @@ public class SettingsActivity extends Activity {
             String theme = Prefs.theme();
             v[2] = theme.equals("light") ? Ui.tr("Claro", "Light") : theme.equals("dark") ? Ui.tr("Escuro", "Dark") : Ui.tr("Automático", "Automatic");
             v[3] = Prefs.background().equals("aurora") ? Ui.tr("Aurora", "Aurora") : Ui.tr("Foto", "Photo");
-            v[4] = onOff(Prefs.weather());
+            v[4] = onOff(Prefs.sports());
+            v[5] = onOff(Prefs.weather());
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
-            v[6] = onOff(Prefs.quotes());
+            v[7] = onOff(Prefs.quotes());
             // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
             for (int i = COIN_ROWS; i < v.length; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
             return v;
@@ -738,9 +745,10 @@ public class SettingsActivity extends Activity {
                     Prefs.setBackground(BACKGROUNDS[(at + dir + BACKGROUNDS.length) % BACKGROUNDS.length]);
                     break;
                 }
-                case 4: Prefs.setWeather(!Prefs.weather()); break;
+                case 4: Prefs.setSports(!Prefs.sports()); break;
+                case 5: Prefs.setWeather(!Prefs.weather()); break;
                 case CITY_ROW: return;
-                case 6: Prefs.setQuotes(!Prefs.quotes()); break;
+                case 7: Prefs.setQuotes(!Prefs.quotes()); break;
                 default:
                     if (!Prefs.quotes()) return;
                     Prefs.setCoin(focus - COIN_ROWS, !Prefs.coin(focus - COIN_ROWS));
@@ -869,8 +877,8 @@ public class SettingsActivity extends Activity {
             for (int i = 0; i < rows; i++) {
                 String[] app = shelfRows.get(pickScroll + i);
                 int place = shelfOrder.indexOf(app[0]);
-                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
-                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float y = (LIST_TOP + 20 + i * listStep()) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + (listStep() - LIST_ROW_GAP) * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(place >= 0 ? 0xF2FFFFFF : 0x80FFFFFF, place >= 0 ? INK : 0x801C1C1E, f));
                 rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
@@ -879,7 +887,7 @@ public class SettingsActivity extends Activity {
                 c.drawText(place >= 0 ? "#" + (place + 1) : Ui.tr("Fora", "Off"), rowRect.right - 30 * k, base, rowValue);
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            float hy = (LIST_TOP + 20 + rows * listStep() + 36) * k;
             c.drawText(Ui.tr("OK põe ou tira da prateleira (até " + HomeApps.MAX_SHELF + "). ← → mudam a ordem.",
                     "OK adds or removes (up to " + HomeApps.MAX_SHELF + "). ← → change the order.",
                     "OK pone o quita del estante (hasta " + HomeApps.MAX_SHELF + "). ← → cambian el orden."), LIST_X * k + 30 * k, hy, hint);
@@ -910,8 +918,8 @@ public class SettingsActivity extends Activity {
             int rows = rowCount();
             for (int i = 0; i < rows; i++) {
                 int at = pickScroll + i;
-                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
-                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float y = (LIST_TOP + 20 + i * listStep()) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + (listStep() - LIST_ROW_GAP) * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 c.drawText(pickLabels.get(at), rowRect.left + 30 * k, rowRect.centerY() + Ui.halfCap(rowLabel), rowLabel);
@@ -921,7 +929,7 @@ public class SettingsActivity extends Activity {
                 }
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            float hy = (LIST_TOP + 20 + rows * listStep() + 36) * k;
             c.drawText((pickScroll + focus + 1) + " / " + pickLabels.size() + "  ·  " + Ui.tr("OK escolhe, Voltar cancela.", "OK picks, Back cancels."),
                     LIST_X * k + 30 * k, hy, hint);
         }
@@ -934,8 +942,8 @@ public class SettingsActivity extends Activity {
             c.drawText(keys ? Ui.tr("Botões do Controle", "Remote Buttons") : Ui.tr("Ajustes do Início", "Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             for (int i = 0; i < labels.length; i++) {
-                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
-                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float y = (LIST_TOP + 20 + i * listStep()) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + (listStep() - LIST_ROW_GAP) * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 boolean locked = !keys && i >= COIN_ROWS && !Prefs.quotes();
@@ -946,7 +954,7 @@ public class SettingsActivity extends Activity {
                 c.drawText(values[i], rowRect.right - 30 * k, base, rowValue);
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            float hy = (LIST_TOP + 20 + labels.length * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            float hy = (LIST_TOP + 20 + labels.length * listStep() + 36) * k;
             c.drawText(Ui.tr("OK ou as setas mudam o valor.", "OK or the arrows change the value."), LIST_X * k + 30 * k, hy, hint);
             if (keys) {
                 c.drawText(RemoteKeys.supported() ? Ui.tr("Disney e Globoplay: a própria TV controla esses botões.",

@@ -48,6 +48,8 @@ final class Recs {
         String kind;            // "movie" or "tv"
         String title, backdrop, meta = "", app, pkg;
         String poster, where = "";   // Top 10: the poster, and where it's on (a service, rent or buy, cinemas)
+        String overview = "", year = "", trailer = "";   // the details panel (trailer: a YouTube video id)
+        double rating;
         boolean detailed;
     }
 
@@ -59,7 +61,7 @@ final class Recs {
     private static final String POSTERS = "https://image.tmdb.org/t/p/w342", PHOTOS = "https://image.tmdb.org/t/p/w780";
     private static final long LIST_EVERY = 6 * 3600_000L;
     /** Bump when what is saved for each title changes (the saved list is discarded and fetched again). */
-    private static final int CACHE_VERSION = 4;
+    private static final int CACHE_VERSION = 5;
     private static final int MANHA = 0, TARDE = 1, NOITE = 2;
     static final String[] PERIOD_LABEL = {"PARA ESTA MANHÃ", "PARA ESTA TARDE", "PARA ESTA NOITE"};
     static final String[] PERIOD_LABEL_RU = {"ЭТИМ УТРОМ", "СЕГОДНЯ ДНЁМ", "СЕГОДНЯ ВЕЧЕРОМ"};
@@ -187,8 +189,16 @@ final class Recs {
         return now(null);
     }
 
+    /** Explore's row: this hour's first pick, then the next ones. */
+    static final int EXPLORE = 12;
+
     /** This hour's 3, movies only ("movie") or shows only ("tv"); null = both (the home screen tabs). */
     List<Pick> now(String kind) {
+        return now(kind, 3);
+    }
+
+    /** This hour's `max`, the same way (Explore shows 12). */
+    List<Pick> now(String kind, int max) {
         List<Pick> list = new ArrayList<>();
         if (!hasKey(context)) return list;    // no TMDB key: no recommendations
         Map<String, Boolean> have = new HashMap<>();   // one look per app, not per title (this runs every 15 s)
@@ -198,10 +208,10 @@ final class Recs {
         }
         if (list.isEmpty()) return list;
         long hour = System.currentTimeMillis() / 3600_000L;
-        // Three per hour, never two from the same franchise ("Law & Order" and "Law & Order: Special…").
+        // A new set every hour, never two from the same franchise ("Law & Order" and "Law & Order: Special…").
         List<Pick> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
-        for (int i = 0; i < list.size() && out.size() < 3; i++) {
+        for (int i = 0; i < list.size() && out.size() < max; i++) {
             Pick p = list.get((int) ((hour * 3 + i) % list.size()));
             if (seen.add(franchise(p.title))) out.add(p);
         }
@@ -453,12 +463,12 @@ final class Recs {
         });
     }
 
-    /** This hour's picks for the three tabs (Explore, Movies, Shows), without repeats. */
+    /** This hour's picks: Explore's row, then three movies and three shows (the screensaver's), without repeats. */
     List<Pick> wanted() {
         List<Pick> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String kind : new String[] {null, "movie", "tv"}) {
-            for (Pick p : now(kind)) if (seen.add(key(p))) out.add(p);
+            for (Pick p : now(kind, kind == null ? EXPLORE : 3)) if (seen.add(key(p))) out.add(p);
         }
         return out;
     }
@@ -569,7 +579,8 @@ final class Recs {
     /** Genre, runtime (or seasons) and the service it's on, among the ones the TV has. */
     private void fetchDetails(Pick p) throws Exception {
         JSONObject o = get("/" + p.kind + "/" + p.id
-                + "?language=" + lang() + "&append_to_response=watch/providers,images&include_image_language=null," + Ui.language + ",en");
+                + "?language=" + lang() + "&append_to_response=watch/providers,images,videos&include_image_language=null," + Ui.language + ",en"
+                + "&include_video_language=" + Ui.language + ",en");
         String best = bestBackdrop(o.optJSONObject("images"));
         if (best != null) p.backdrop = best;
         List<String> parts = new ArrayList<>();
@@ -602,6 +613,12 @@ final class Recs {
             }
         }
         if (p.app != null) parts.add(SERVICE_NAME.get(p.app));
+        // The details panel: the plot, the year, the rating and a trailer on YouTube (official ones first).
+        p.overview = o.optString("overview");
+        String date = o.optString(p.kind.equals("movie") ? "release_date" : "first_air_date");
+        p.year = date.length() >= 4 ? date.substring(0, 4) : "";
+        p.rating = o.optDouble("vote_average", 0);
+        p.trailer = trailer(o.optJSONObject("videos"));
         // Top 10: where it's on, on the TV's apps or not (a service, else rent or buy, else cinemas).
         if (p.app != null) {
             p.where = SERVICE_NAME.get(p.app);
@@ -617,6 +634,26 @@ final class Recs {
         }
         p.meta = String.join(" · ", parts);
         p.detailed = true;
+    }
+
+    /** The best YouTube trailer: in the TV's language before English, official before not, a trailer before a teaser. */
+    private static String trailer(JSONObject videos) {
+        JSONArray list = videos == null ? null : videos.optJSONArray("results");
+        String best = "";
+        int bestScore = -1;
+        for (int i = 0; list != null && i < list.length(); i++) {
+            JSONObject v = list.optJSONObject(i);
+            if (v == null || !"YouTube".equals(v.optString("site")) || v.optString("key").isEmpty()) continue;
+            String type = v.optString("type");
+            if (!type.equals("Trailer") && !type.equals("Teaser")) continue;
+            int score = (type.equals("Trailer") ? 4 : 0) + (v.optBoolean("official") ? 2 : 0)
+                    + (Ui.language.equals(v.optString("iso_639_1")) ? 8 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                best = v.optString("key");
+            }
+        }
+        return best;
     }
 
     /** TV genres that TMDB returns in English even in pt-BR. */
@@ -758,7 +795,7 @@ final class Recs {
             if (forLight != light) return;   // the design changed midway: this one is stale
             synchronized (images) {
                 images.put(p.backdrop, backdrop);
-                while (images.size() > (forLight ? 10 : 4)) images.remove(images.keySet().iterator().next());
+                while (images.size() > (forLight ? EXPLORE + 4 : 4)) images.remove(images.keySet().iterator().next());
             }
             notifyListeners();
         } catch (IOException | RuntimeException | OutOfMemoryError e) {
@@ -771,7 +808,7 @@ final class Recs {
     void trim() {
         // Explore's picks stay: the home screen opens on that tab, so its cards are never gray when you come back.
         java.util.Set<String> keep = new java.util.HashSet<>();
-        for (Pick p : now(null)) if (p.backdrop != null) keep.add(p.backdrop);
+        for (Pick p : now(null, EXPLORE)) if (p.backdrop != null) keep.add(p.backdrop);
         synchronized (images) {
             images.keySet().retainAll(keep);
         }
@@ -817,7 +854,8 @@ final class Recs {
         for (Pick p : list) {
             a.put(new JSONObject().put("id", p.id).put("kind", p.kind).put("title", p.title).put("backdrop", p.backdrop)
                     .put("meta", p.meta).put("app", p.app == null ? "" : p.app).put("pkg", p.pkg == null ? "" : p.pkg)
-                    .put("poster", p.poster == null ? "" : p.poster).put("where", p.where).put("detailed", p.detailed));
+                    .put("poster", p.poster == null ? "" : p.poster).put("where", p.where).put("overview", p.overview)
+                    .put("year", p.year).put("rating", p.rating).put("trailer", p.trailer).put("detailed", p.detailed));
         }
         return a;
     }
@@ -837,6 +875,10 @@ final class Recs {
             p.pkg = o.optString("pkg").isEmpty() ? null : o.optString("pkg");
             p.poster = o.optString("poster");
             p.where = o.optString("where");
+            p.overview = o.optString("overview");
+            p.year = o.optString("year");
+            p.rating = o.optDouble("rating", 0);
+            p.trailer = o.optString("trailer");
             p.detailed = o.optBoolean("detailed");
             out.add(p);
         }
