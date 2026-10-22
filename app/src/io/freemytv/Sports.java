@@ -49,7 +49,8 @@ final class Sports {
         String race = "", place = "", circuit = "", lastRace = "";
         long at;            // 0: no race left this season
         final List<String[]> podium = new ArrayList<>();      // {position, code, team}
-        final List<String[]> standings = new ArrayList<>();   // {position, name, points}
+        final List<String[]> standings = new ArrayList<>();   // {position, name, points}, the top 10
+        final List<Object[]> sessions = new ArrayList<>();    // the race weekend: {name, epoch ms (Long)}
     }
 
     interface Listener { void onSports(); }
@@ -58,6 +59,8 @@ final class Sports {
     private static final String ESPN = "https://site.api.espn.com/apis/site/v2/sports/";
     private static final long F1_EVERY = 3 * 3600_000L, LEAGUE_EVERY = 30 * 60_000L, LIVE_EVERY = 60_000L;
     private static final long RETRY = 10 * 60_000L;
+    /** Bump when what is saved changes (the cache is dropped and fetched again). */
+    private static final int CACHE_VERSION = 2;
 
     private static Sports instance;
 
@@ -83,6 +86,7 @@ final class Sports {
 
     private Sports(Context c) {
         cache = c.getSharedPreferences("sports", Context.MODE_PRIVATE);
+        if (cache.getInt("version", 0) != CACHE_VERSION) cache.edit().clear().putInt("version", CACHE_VERSION).apply();
         try {
             String s = cache.getString("f1", null);
             if (s != null) f1 = parseF1(new JSONObject(s));
@@ -136,9 +140,10 @@ final class Sports {
                 }
                 if (b) {
                     try {
-                        // US dates: yesterday's results and today's games (the NBA plays at night in the US).
+                        // US dates: last night's results, tonight's games and tomorrow's (the NBA plays at night in the
+                        // US, which is the middle of the night in Europe).
                         JSONArray events = new JSONArray();
-                        for (int day = -1; day <= 0; day++) {
+                        for (int day = -1; day <= 1; day++) {
                             JSONArray list = get(ESPN + "basketball/nba/scoreboard?dates=" + usDate(day)).optJSONArray("events");
                             for (int i = 0; list != null && i < list.length(); i++) events.put(list.get(i));
                         }
@@ -198,6 +203,18 @@ final class Sports {
             }
             String time = race.optString("time");
             out.at = time(race.optString("date") + "T" + (time.isEmpty() ? "12:00:00Z" : time));
+            String[][] weekend = {{"FirstPractice", "Practice 1"}, {"SecondPractice", "Practice 2"}, {"ThirdPractice", "Practice 3"},
+                    {"SprintQualifying", "Sprint qualifying"}, {"SprintShootout", "Sprint qualifying"}, {"Sprint", "Sprint"},
+                    {"Qualifying", "Qualifying"}};
+            for (String[] w : weekend) {
+                JSONObject session = race.optJSONObject(w[0]);
+                if (session == null) continue;
+                String t = session.optString("time");
+                long at = time(session.optString("date") + "T" + (t.isEmpty() ? "12:00:00Z" : t));
+                if (at != 0) out.sessions.add(new Object[] {w[1], at});
+            }
+            out.sessions.sort((x, y) -> Long.compare((Long) x[1], (Long) y[1]));
+            out.sessions.add(new Object[] {"Race", out.at});
         }
         JSONObject last = first(raw.optJSONObject("last"), "RaceTable", "Races");
         if (last != null) {
@@ -212,7 +229,7 @@ final class Sports {
         }
         JSONObject list = first(raw.optJSONObject("standings"), "StandingsTable", "StandingsLists");
         JSONArray drivers = list == null ? null : list.optJSONArray("DriverStandings");
-        for (int i = 0; drivers != null && i < drivers.length() && i < 3; i++) {
+        for (int i = 0; drivers != null && i < drivers.length() && i < 10; i++) {
             JSONObject r = drivers.optJSONObject(i);
             JSONObject d = r.optJSONObject("Driver");
             out.standings.add(new String[] {r.optString("position"), d == null ? "" : d.optString("familyName"), r.optString("points")});

@@ -95,6 +95,18 @@ final class German {
             case "Background": return "Hintergrund";
             case "Photo": return "Foto";
             case "Aurora": return "Polarlicht";
+            case "Race weekend": return "Rennwochenende";
+            case "Upcoming": return "Demnächst";
+            case "Results": return "Ergebnisse";
+            case "OK: weekend and standings": return "OK: Wochenende und WM-Stand";
+            case "OK: all ": return "OK: alle ";
+            case " games": return " Spiele";
+            case "Practice 1": return "1. Training";
+            case "Practice 2": return "2. Training";
+            case "Practice 3": return "3. Training";
+            case "Sprint qualifying": return "Sprint-Qualifying";
+            case "Qualifying": return "Qualifying";
+            case "Race": return "Rennen";
             case "Loading…": return "Wird geladen…";
             case "No race left this season": return "Keine Rennen mehr in dieser Saison";
             case "Live now": return "Live";

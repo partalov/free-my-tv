@@ -94,6 +94,18 @@ final class Russian {
             case "Background": return "Фон";
             case "Photo": return "Фото";
             case "Aurora": return "Сияние";
+            case "Race weekend": return "Гоночный уикенд";
+            case "Upcoming": return "Скоро";
+            case "Results": return "Результаты";
+            case "OK: weekend and standings": return "OK: расписание и зачёт";
+            case "OK: all ": return "OK: все матчи (";
+            case " games": return ")";
+            case "Practice 1": return "Практика 1";
+            case "Practice 2": return "Практика 2";
+            case "Practice 3": return "Практика 3";
+            case "Sprint qualifying": return "Квалификация спринта";
+            case "Qualifying": return "Квалификация";
+            case "Race": return "Гонка";
             case "Loading…": return "Загрузка…";
             case "No race left this season": return "В этом сезоне гонок больше нет";
             case "Live now": return "Сейчас в эфире";
